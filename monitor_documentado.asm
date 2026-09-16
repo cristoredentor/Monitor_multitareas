@@ -2,7 +2,7 @@
 ;
 
 ;
-; [FIX] Se eliminó ".PROC MNT": no tiene equivalente en este ensamblador y no dejaba ensamblar el archivo.
+                .PROC MNT               ;Error código: esta instrucción no parece tener equivalente
 
 ; DONNEES FICTIVES
 
@@ -31,7 +31,7 @@ CHTPMS          .EQU    0               ; CHAINE PRETES OU A SEMAPHORE
 STATUS          .EQU    2               ; ETAT DE LA TACHE
                                         ; 1 byte con uno de los 4 estados: NONCREE/PRET/ACTIF/BLOQUEO
 SEMAT           .EQU    3               ; SEMAPHORE BLOQUANT
-                                        ; número de semáforo donde quedó bloqueada
+                                        ; número de semáforo donde quedó bloqueada 
 GARSP           .EQU    4               ; GARAGE SP
                                         ; aquí se guarda el SP (2 bytes) de la tarea cuando NO está
                                         ; corriendo, para poder restaurarlo en el cambio de contexto
@@ -69,21 +69,21 @@ NBIOIO          .EQU    $
 
 ; DONNEES UTILES
 
-; [FIX] PTRCTXL, NBCTX, PTRDTP, PTRFTP, PTRTA y STOSP (más abajo) estaban como ".WORD" sin
-; valor, lo cual no es una declaración válida; se cambiaron a ".BLOCK 2" para solo reservarles
-; espacio (su valor real se llena en tiempo de ejecución, en DEBMON/CREER).
+
+;Error: Todas estas variables no estan inicializadas
+
 
                                         ; TABLE CENTRALE
-PTRCTXL         .BLOCK  2               ; POINTEUR CTX LIBRE CREATION
+PTRCTXL         .WORD                   ; POINTEUR CTX LIBRE CREATION
                                         ; dirección del próximo bloque de memoria libre donde CREER
                                         ; puede crear una tarea nueva
-NBCTX           .BLOCK  2               ; NB CTX CREES
+NBCTX           .WORD                   ; NB CTX CREES
                                         ; cuántas tareas existen (creadas) hasta este momento
-PTRDTP          .BLOCK  2               ; PTR CTX DEBUT TACHES PRETES
+PTRDTP          .WORD                   ; PTR CTX DEBUT TACHES PRETES
                                         ; cabeza de la cola de tareas listas (la próxima en correr)
-PTRFTP          .BLOCK  2               ;       FIN
+PTRFTP          .WORD                   ;       FIN
                                         ; cola (el final) de la cola de tareas listas
-PTRTA           .BLOCK  2               ; PTR CTX TACHE EN COURS
+PTRTA           .WORD                   ; PTR CTX TACHE EN COURS
                                         ; puntero a la tarea que se está ejecutando ahora mismo
                                         ; ZONE MEMOIRE SEMAPHORES
 BSEM            .BLOCK  8*SEMPES
@@ -93,10 +93,8 @@ BSEM            .BLOCK  8*SEMPES
                                         ; E/S además: +5 watchdog activo (V/F), +6/+7 cuenta regresiva
 
                                         ; ZONE MEMOIRE CTX
-                                        ; [FIX] Se cambió LONGCTX por LONGDCTX: cada bloque de tarea
-                                        ; mide LONGDCTX bytes (header+pila), no solo LONGCTX (el header).
-INICTX          .BLOCK  LONGDCTX*NBMCTX
-
+INICTX          .BLOCK  LONGCTX*NBMCTX  ; Error código: Se esta usando LONGCTX como desplazamiento cuando deberia usarse LONGDCTX
+                                       
 INREVM          .BLOCK  NBES            ; INDICATEURS REVEIL (V/F)
                                         ; un byte por unidad de E/S: ¿esta tarea fue despertada por
                                         ; el reloj (watchdog) o por un FINES manual?
@@ -108,12 +106,10 @@ PPILSYS         .BLOCK  1
                                         ; tope inicial de PILSYS (la pila crece hacia direcciones
                                         ; menores, por eso el SP arranca aquí, al final del bloque)
 
-; [FIX] Faltaba reservar espacio para TARTIT (la tabla de vectores de interrupción usada por
-; INIPER/INICTC más abajo); se agregó su declaración junto al comentario que ya la describía.
+;Error Claude: La declaración de TARTIT si venía en el documento oficial pero no lo incluyo Claude
+
 
 ; TABLE D'ADRESSES DES ROUTINES DE TRAITEMENT D'IT
-
-TARTIT          .BLOCK  2
 
 ;***************************************************************************
 ;
@@ -121,15 +117,13 @@ TARTIT          .BLOCK  2
 ;
 ;***************************************************************************
 
-; PRIMITIVE P(#SEMAPHORE)
-; [FIX] Se eliminaron las 2 líneas de "LD A,#SEMAPHORE / CALL P": eran un ejemplo de uso
-; documentado con un símbolo (#SEMAPHORE) que nunca se definió, y quedaron como código real
-; sin comentar, por lo que no ensamblaban.
+; PRIMITIVE P(#SEMAPHORE)               
+                                        ; Error Claude:  estas 2 líneas de abajo no fueron tomadas como comentarios
+                                       
+                LD      A,#SEMAPHORE
+                CALL    P
 ;
-; [FIX] La etiqueta original "P" se renombró a "SEMP": "P" es la condición de signo positivo
-; del Z80 y choca con instrucciones como "JP P,..."; se actualizó también su único uso real
-; (el salto dentro de DEMES, más abajo).
-SEMP            DI
+P               DI    ;Error código:  P es una palabra reservada en el Z80
 
 
                 PUSH    AF                       ; se guardan los registros que esta rutina toca,
@@ -144,8 +138,8 @@ SEMP            DI
 
                 LD      A,(HL)
                 DEC     A
-                LD      (HL),A
-
+                LD      (HL),A                   
+                                         
 
                 JP      M,WAIT                   ; SI OPTEUR < 0 ALORS WAIT
                                                  ; si el contador quedó negativo, no había recurso libre:
@@ -216,8 +210,10 @@ RECHSEM         RLCA
 ;***************************************************************************
 ;
 ; PRIMITIVE V(#SEMAPHORE)                  -> operación V (signal) de Dijkstra
-; [FIX] Se eliminaron las 2 líneas de "LD A,#SEMAPHORE / CALL V": era el ejemplo de uso
-; escrito como código real (símbolo #SEMAPHORE indefinido), no comentado.
+                                        ; Error Claude: estas 2
+                                        ; líneas son documentación de uso escrita como código real,
+                LD      A,#SEMAPHORE
+                CALL    V
 ;
 V               DI
 
@@ -288,8 +284,10 @@ FINV            POP     DE
 ;***************************************************************************
 ;
 ; PRIMITIVE INISEM(#SEMAPHORE,CPTE)               INITIALISATION SEMAPHORE
-; [FIX] Se eliminaron las 3 líneas de "LD B,CPTE / LD A,#SEMAPHORE / CALL INISEM": ejemplo de
-; uso con símbolos indefinidos (CPTE, #SEMAPHORE) escrito como código real.
+  
+                LD      B,CPTE
+                LD      A,#SEMAPHORE               ; Error de Claude: comentario como código
+                CALL    INISEM
 ;
 INISEM          DI
 
@@ -326,7 +324,8 @@ INISEM          DI
 ; APPELLE PAR :  PRIMITIVE P LORS D'UN BLOCAGE
 ;                PRIMITIVE PASS SI FILE TACHES PRETES NON VIDE
 ;
-STOSP           .BLOCK  2                        ; GARAGE TEMPORAL SP
+STOSP           .WORD                            ; GARAGE TEMPORAL SP
+                                        ; mismo problema que más arriba: no tiene valor inicial
 DISP            DI
 
                 LD      IX,(PTRTA)               ; SAUVEGARDER CTX TACHE COURS
@@ -359,8 +358,8 @@ DISPP           LD      HL,(PTRDTP)              ; RESTAURER CTX 1ERE TACHE PRET
 ;
 ; PRIMITIVE PASS                    ; PASSE LA MAIN  -> cede la CPU voluntariamente si hay otra
                                         ; tarea lista; si no hay ninguna, sigue corriendo igual
-; [FIX] Se eliminó "CALL PASS": era la forma de invocarla puesta como código real en vez de
-; comentario, justo antes de la definición real de la rutina.
+                                        
+                CALL    PASS        ; Error: Parece ser que es la manera de llamarla y originalmente era un comentario
 ;
 ; SI ON VEUT UTILISER "TIME SLICING", IL FAUT ACTIVER "UNITE E/S #0"
 ; LA ROUTINE DE TRAITEMENT D'IT DE L'HORLOGE FERA PASS POUR QUITTER LE
@@ -368,7 +367,7 @@ DISPP           LD      HL,(PTRDTP)              ; RESTAURER CTX 1ERE TACHE PRET
 
 ; traducción: si se quiere usar "time slicing", hay que activar la "unidad
 ; de E/S #0"; la rutina de interrupción del reloj hará PASS para quitarle la
-; CPU a la tarea en curso.
+; CPU a la tarea en curso. 
 PASS            PUSH    AF
                 PUSH    HL
                 PUSH    DE
@@ -420,16 +419,18 @@ CONPASS         LD      (PTRDTP),HL              ; EXTRAIRE TETE TACHES PRETES
                                         ; pide una E/S: equivale a un P() sobre el semáforo de esa
                                         ; unidad de E/S (los semáforos de E/S viven después de los
                                         ; NBSEM normales dentro de la misma tabla BSEM)
-; [FIX] Se eliminó "LD A,#UNITE / CALL DEMES": ejemplo de uso con símbolo indefinido (#UNITE)
-; puesto como código real.
-;
+                                        ; Error (no marcado antes, mismo patrón de siempre): estas 2
+                                        ; líneas son el ejemplo de uso escrito como código real;
+                                        ; "#UNITE" no es un símbolo definido.
+                LD      A,#UNITE
+                CALL    DEMES
+
 DEMES           DI
 
-                                        ; [FIX] Sumaba "NBSEM+NBES" en vez de solo "NBSEM": eso apuntaba
-                                        ; fuera de la tabla BSEM y corrompía memoria. Se dejó igual que
-                                        ; FINES/INIES/ARMERH/ACTIVH/SUSPH, que solo suman NBSEM.
-                ADD     A,NBSEM
-                JP      SEMP                     ; PRIMITIVE P
+                ADD     A,NBSEM+NBES
+                JP      P                        ; PRIMITIVE P
+                                        ; salta directo a la etiqueta P (ver nota sobre el nombre
+                                        ; reservado "P" más arriba); reutiliza toda la lógica de P
 
 
 ;***************************************************************************
@@ -437,7 +438,10 @@ DEMES           DI
                                         ; señala que una E/S terminó: equivale a un V(), pero además
                                         ; apaga el watchdog de esa unidad y anota que no fue el reloj
                                         ; quien la despertó
-; [FIX] Se eliminó "LD A,#UNITE / CALL FINES": ejemplo de uso con símbolo indefinido, sin comentar.
+
+                                        ; Error Claude: documentación de uso sin comentar.
+                LD      A,#UNITE
+                CALL    FINES
 ;                                                 A NON DETRUIT A LA SORTIE
 FINES           DI
 
@@ -486,8 +490,11 @@ APV             POP     AF
 ;
 ; PRIMITIVE INIES(#UNITE)                        INITIALISATION SEMAPHORE E/S A 0
                                         ; deja en 0 el semáforo/contador de la unidad de E/S #UNITE
-; [FIX] Se eliminó "LD A,#UNITE / CALL INIES": ejemplo de uso con símbolo indefinido, sin comentar.
-;
+                                        ; Error (no marcado antes, mismo patrón): estas 2 líneas son
+                                        ; el ejemplo de uso escrito como código real, sin comentar.
+                LD      A,#UNITE
+                CALL    INIES
+
 INIES           DI
 
                 PUSH    AF
@@ -508,7 +515,7 @@ INIES           DI
 
                 LD      (IX + 0),0               ; OPTEUR = 0
                 LD      (IX + 1),NIL
-                LD      (IX + 2),NIL             ; (cabeza y cola de la cola de espera = vacía)
+                LD      (IX + 2),NIL
                 LD      (IX + 3),NIL
                 LD      (IX + 4),NIL
                 LD      (IX + 5),FALSE            ; INHIBITION T.D.
@@ -527,9 +534,11 @@ INIES           DI
 ; PRIMITIVE ARMERH(COMPTE,#UNITE)                 INITIALISATION OPTEUR T.D.
                                         ; carga la cuenta regresiva del watchdog de una unidad de
                                         ; E/S, SIN activarlo todavía (eso lo hace ACTIVH aparte)
-; [FIX] Se eliminaron "LD C,COMPTE.L / LD B,COMPTE.H / LD A,#UNITE / CALL ARMERH": ejemplo de
-; uso con símbolos indefinidos (COMPTE.L, COMPTE.H, #UNITE) puesto como código real.
-;
+                LD      C,COMPTE.L         ; Error de Claude: comentario como código
+                LD      B,COMPTE.H         ; Error de Claude: comentario como código
+                LD      A,#UNITE           ; Error de Claude: comentario como código
+                CALL    ARMERH
+
 ARMERH          DI
 
                 PUSH    AF
@@ -569,7 +578,11 @@ ARMERH          DI
                                         ; cada interrupción del reloj (RTITCTC) se le va a decrementar
                                         ; la cuenta que le cargó ARMERH
 
-; [FIX] Se eliminó "LD A,#UNITE / CALL ACTIVH": ejemplo de uso con símbolo indefinido, sin comentar.
+
+                                        ; Error Claude: ejemplo de uso sin comentar, "#UNITE" indefinido.
+                LD      A,#UNITE
+                CALL    ACTIVH
+
 ACTIVH          DI
 
                 PUSH    AF
@@ -599,7 +612,12 @@ ACTIVH          DI
                                         ; suspende (desactiva) el watchdog de una unidad de E/S, sin
                                         ; tocar su cuenta (se puede reactivar más tarde con ACTIVH)
 
-; [FIX] Se eliminó "LD A,#UNITE / CALL SUSPH": ejemplo de uso con símbolo indefinido, sin comentar.
+
+                                        ; Error Claude: ejemplo de uso sin
+                                        ; comentar.
+                LD      A,#UNITE
+                CALL    SUSPH
+
 SUSPH           DI
 
                 PUSH    AF
@@ -628,9 +646,11 @@ SUSPH           DI
 ; PRIMITIVE CREER(@DEBUT,ACTX)                    CREATION CTX
                                         ; crea una tarea nueva a partir de una dirección de inicio de
                                         ; código (@DEBUT); usa el siguiente bloque libre de INICTX
+     
 
-; [FIX] Se eliminó "LD HL,@DEBUT PGM / CALL CREER": ejemplo de uso con sintaxis inválida
-; (@DEBUT PGM no es un operando válido) puesto como código real.
+                LD      HL,@DEBUT PGM             ; Error de Claude: comentario como código
+                CALL    CREER
+
 CREER           DI
 
                 PUSH    IX
@@ -707,8 +727,9 @@ SUITCREAR       POP     HL
 ;***************************************************************************
 ;
 ; PRIMITIVE DETRUIX(#CTX)                          -> destruye una tarea existente
-; [FIX] Se eliminó "LD A,#CTX / CALL DETRUIX": ejemplo de uso con símbolo indefinido (#CTX),
-; sin comentar.
+                                        
+                LD      A,#CTX                     ; Error Claude: ejemplo de uso sin comentar, "#CTX" indefinido.
+                CALL    DETRUIX
                                                   ; #CTX > 0
 DETRUIX         DI
 
@@ -720,15 +741,13 @@ DETRUIX         DI
                 PUSH    IY
 
                 LD      HL,INICTX                ; RECHERCHE CTX
-                                        ; [FIX] Se cambió LONGCTX por LONGDCTX: el paso entre bloques de
-                                        ; contexto en INICTX debe ser el tamaño TOTAL del bloque.
-                LD      E,LONGDCTX
+                LD      E,LONGCTX                ; Error código: uso de LONGCCTX en vez de LONGDCTX
                 LD      D,0
                 LD      B,A
 BUSCTX          ADD     HL,DE
                 DJNZ    BUSCTX                    ; HL POINTE CTX A DETRUIRE
                                         ; recorre INICTX en pasos de LONGCTX=6 bytes para llegar al
-                                        ; bloque de la tarea #A.
+                                        ; bloque de la tarea #A. 
                 LD      C,L
                 LD      B,H
                 PUSH    BC
@@ -780,10 +799,14 @@ NOVIDBL         LD      L,(IY + 1)                ; FILE NON VIDE
                 LD      A,(IX + CHTPMS)           ; EN TETE
                 LD      (IY + 1),A
                 LD      A,(IX + CHTPMS + 1)
-                                        ; [FIX] Esta línea escribía otra vez en (IY+1) en vez de (IY+2);
-                                        ; (IY+1)/(IY+2) son el puntero de 16 bits a la cabeza de la cola
-                                        ; de espera del semáforo, así que el byte alto debe ir en (IY+2).
-                LD      (IY + 2),A                ; DECHAINAGE
+                LD      (IY + 1),A                ; DECHAINAGE
+                                        ; Error códio: estas dos líneas escriben DOS VECES en (IY+1) en
+                                        ; vez de escribir la segunda en (IY+2). (IY+1)/(IY+2) son el
+                                        ; puntero de 16 bits a la cabeza de la cola de espera del
+                                        ; semáforo; si de verdad debe actualizarse con
+                                        ; (IX+CHTPMS)/(IX+CHTPMS+1), lo esperable sería
+                                        ; "LD (IY+1),A" y luego "LD (IY+2),A", como se hace en otras
+                                        ; partes del archivo (por ejemplo en TROUVE, en DECHAIN).
                 JR      ULTFIL
 
 STELIM          PUSH    IY                        ; PAS EN TETE, GARDER PTR SEM
@@ -827,9 +850,7 @@ FINDET          POP     IY
 ;                         AF,HL,DE SONT DETRUITS
 
 DECHAIN         LD      IY,INICTX
-                                        ; [FIX] Se cambió LONGCTX por LONGDCTX (mismo motivo que en
-                                        ; DETRUIX: el paso entre bloques es el tamaño TOTAL del bloque).
-                LD      E,LONGDCTX
+                LD      E,LONGCTX   ; Error código: uso de LONGCCTX en vez de LONGDCTX
                 LD      D,0
 
 BOUX            LD      L,(IY + CHTPMS)             ; RECHERCHE CTX QUI POINTE
@@ -934,7 +955,9 @@ INICTC          LD      HL,TARTIT
                 INC     HL                          ; CTC A LA TABLE D'ADRESSES IT
                 LD      (HL),D
                                         ; registra la dirección de RTITCTC (la rutina de interrupción
-                                        ; del CTC) en la tabla de vectores TARTIT
+                                        ; del CTC) en la tabla de vectores TARTIT (¡que en este
+                                        ; archivo no está reservada como espacio de memoria: ver la
+                                        ; nota junto a "PPILSYS .BLOCK 1" más arriba!)
 
                 LD      IX,BSEM
                 LD      E,0
@@ -1071,13 +1094,20 @@ TIMSLIC         POP     IY                           ; se restauran los registro
                                         ; preventivo (esto es lo que hace real el time-slicing)
 
 
-; [FIX] Se eliminó un "RET" huérfano que estaba aquí, sin etiqueta y sin que nada saltara a él
-; (código muerto que sobraba entre RTITCTC y TACHE 1).
+;***************************************************************************
+                                        ; Código huérfano: este "EI / RET" no tiene etiqueta y nada
+                                        ; salta aquí 
+                                        
+                                        
+                                       
+                                       
+                RET
+
 
 ;***************************************************************************
 ;
-; TACHE 1
-;
+; TACHE 1                                          
+;                                                   
 ;
 T1              LD      C,41H
                 CALL    014H                       ; llamada a alguna rutina de E/S para imprimir el
