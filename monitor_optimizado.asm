@@ -1,9 +1,6 @@
 ; MONITEUR
 ;
 
-;
-; [FIX] Se eliminó ".PROC MNT": no tiene equivalente en este ensamblador y no dejaba ensamblar el archivo.
-
 ; DONNEES FICTIVES
 
 NIL             .EQU    00H
@@ -69,10 +66,6 @@ NBIOIO          .EQU    $
 
 ; DONNEES UTILES
 
-; [FIX] PTRCTXL, NBCTX, PTRDTP, PTRFTP, PTRTA y STOSP (más abajo) estaban como ".WORD" sin
-; valor, lo cual no es una declaración válida; se cambiaron a ".BLOCK 2" para solo reservarles
-; espacio (su valor real se llena en tiempo de ejecución, en DEBMON/CREER).
-
                                         ; TABLE CENTRALE
 PTRCTXL         .BLOCK  2               ; POINTEUR CTX LIBRE CREATION
                                         ; dirección del próximo bloque de memoria libre donde CREER
@@ -93,8 +86,8 @@ BSEM            .BLOCK  8*SEMPES
                                         ; E/S además: +5 watchdog activo (V/F), +6/+7 cuenta regresiva
 
                                         ; ZONE MEMOIRE CTX
-                                        ; [FIX] Se cambió LONGCTX por LONGDCTX: cada bloque de tarea
-                                        ; mide LONGDCTX bytes (header+pila), no solo LONGCTX (el header).
+                                        ; cada bloque de tarea mide LONGDCTX bytes: header (LONGCTX)
+                                        ; + su pila privada (LONGPIL)
 INICTX          .BLOCK  LONGDCTX*NBMCTX
 
 INREVM          .BLOCK  NBES            ; INDICATEURS REVEIL (V/F)
@@ -108,9 +101,6 @@ PPILSYS         .BLOCK  1
                                         ; tope inicial de PILSYS (la pila crece hacia direcciones
                                         ; menores, por eso el SP arranca aquí, al final del bloque)
 
-; [FIX] Faltaba reservar espacio para TARTIT (la tabla de vectores de interrupción usada por
-; INIPER/INICTC más abajo); se agregó su declaración junto al comentario que ya la describía.
-
 ; TABLE D'ADRESSES DES ROUTINES DE TRAITEMENT D'IT
 
 TARTIT          .BLOCK  2
@@ -122,13 +112,9 @@ TARTIT          .BLOCK  2
 ;***************************************************************************
 
 ; PRIMITIVE P(#SEMAPHORE)
-; [FIX] Se eliminaron las 2 líneas de "LD A,#SEMAPHORE / CALL P": eran un ejemplo de uso
-; documentado con un símbolo (#SEMAPHORE) que nunca se definió, y quedaron como código real
-; sin comentar, por lo que no ensamblaban.
-;
-; [FIX] La etiqueta original "P" se renombró a "SEMP": "P" es la condición de signo positivo
-; del Z80 y choca con instrucciones como "JP P,..."; se actualizó también su único uso real
-; (el salto dentro de DEMES, más abajo).
+                                        ; se usa el nombre "SEMP" en vez de "P": "P" es la condición
+                                        ; de signo positivo del Z80 y choca con instrucciones como
+                                        ; "JP P,..." (ver su uso en DEMES, más abajo)
 SEMP            DI
 
 
@@ -141,12 +127,7 @@ SEMP            DI
                                         ; RECHSEM va a destruir el valor de A
 
                 CALL    RECHSEM                  ; HL POINTE SEMAPHORE
-
-                LD      A,(HL)
-                DEC     A
-                LD      (HL),A
-
-
+                DEC (HL)
                 JP      M,WAIT                   ; SI OPTEUR < 0 ALORS WAIT
                                                  ; si el contador quedó negativo, no había recurso libre:
                                                  ; bloquear la tarea actual (saltar a WAIT)
@@ -216,8 +197,6 @@ RECHSEM         RLCA
 ;***************************************************************************
 ;
 ; PRIMITIVE V(#SEMAPHORE)                  -> operación V (signal) de Dijkstra
-; [FIX] Se eliminaron las 2 líneas de "LD A,#SEMAPHORE / CALL V": era el ejemplo de uso
-; escrito como código real (símbolo #SEMAPHORE indefinido), no comentado.
 ;
 V               DI
 
@@ -227,10 +206,8 @@ V               DI
 
                 CALL    RECHSEM                  ; HL POINTE SEMAPHORE
 
-                LD      A,(HL)
-                INC     A
-                LD      (HL),A                   ; OPTEUR = OPTEUR + 1
-                                        ; (equivalente a "INC (HL)")
+                INC     (HL)
+                                          ; OPTEUR = OPTEUR + 1
 
                 JP      M,SIGNAL
                 JP      Z,SIGNAL                 ; DEBLOCAGE D'UNE TACHE
@@ -250,7 +227,7 @@ SIGNAL          PUSH    HL
                                         ; espera del semáforo: es la que se va a desbloquear
 
                 LD      A,(HL)
-                CP      0
+                OR      A
                 JR      NZ,NOVIDEV
                 LD      (IY + 1),NIL
                 LD      (IY + 2),NIL
@@ -288,8 +265,6 @@ FINV            POP     DE
 ;***************************************************************************
 ;
 ; PRIMITIVE INISEM(#SEMAPHORE,CPTE)               INITIALISATION SEMAPHORE
-; [FIX] Se eliminaron las 3 líneas de "LD B,CPTE / LD A,#SEMAPHORE / CALL INISEM": ejemplo de
-; uso con símbolos indefinidos (CPTE, #SEMAPHORE) escrito como código real.
 ;
 INISEM          DI
 
@@ -359,8 +334,6 @@ DISPP           LD      HL,(PTRDTP)              ; RESTAURER CTX 1ERE TACHE PRET
 ;
 ; PRIMITIVE PASS                    ; PASSE LA MAIN  -> cede la CPU voluntariamente si hay otra
                                         ; tarea lista; si no hay ninguna, sigue corriendo igual
-; [FIX] Se eliminó "CALL PASS": era la forma de invocarla puesta como código real en vez de
-; comentario, justo antes de la definición real de la rutina.
 ;
 ; SI ON VEUT UTILISER "TIME SLICING", IL FAUT ACTIVER "UNITE E/S #0"
 ; LA ROUTINE DE TRAITEMENT D'IT DE L'HORLOGE FERA PASS POUR QUITTER LE
@@ -379,10 +352,8 @@ PASS            PUSH    AF
                 LD      IX,(PTRTA)               ; REGARDER FILE TACHES PRETES
                 LD      L,(IX + CHTPMS)          ; IX POINTE TACHE ACTIVE
                 LD      H,(IX + CHTPMS + 1)      ; HL POINTE SUIVANTE TACHE PRETE
-                LD      A,NIL
-                CP      L
-                JR      NZ,CONPASS
-                CP      H
+                LD      A,L
+                OR      H
                 JR      NZ,CONPASS
                                         ; si el "siguiente" de la tarea activa es NIL, no hay
                                         ; ninguna otra tarea lista: no hace falta cambiar de tarea
@@ -420,14 +391,9 @@ CONPASS         LD      (PTRDTP),HL              ; EXTRAIRE TETE TACHES PRETES
                                         ; pide una E/S: equivale a un P() sobre el semáforo de esa
                                         ; unidad de E/S (los semáforos de E/S viven después de los
                                         ; NBSEM normales dentro de la misma tabla BSEM)
-; [FIX] Se eliminó "LD A,#UNITE / CALL DEMES": ejemplo de uso con símbolo indefinido (#UNITE)
-; puesto como código real.
 ;
 DEMES           DI
 
-                                        ; [FIX] Sumaba "NBSEM+NBES" en vez de solo "NBSEM": eso apuntaba
-                                        ; fuera de la tabla BSEM y corrompía memoria. Se dejó igual que
-                                        ; FINES/INIES/ARMERH/ACTIVH/SUSPH, que solo suman NBSEM.
                 ADD     A,NBSEM
                 JP      SEMP                     ; PRIMITIVE P
 
@@ -437,7 +403,6 @@ DEMES           DI
                                         ; señala que una E/S terminó: equivale a un V(), pero además
                                         ; apaga el watchdog de esa unidad y anota que no fue el reloj
                                         ; quien la despertó
-; [FIX] Se eliminó "LD A,#UNITE / CALL FINES": ejemplo de uso con símbolo indefinido, sin comentar.
 ;                                                 A NON DETRUIT A LA SORTIE
 FINES           DI
 
@@ -460,7 +425,7 @@ FINES           DI
                 POP     IX                       ; IX POINTE SEMAPHORE
                 LD      (IX + 5),FALSE            ; INHIBITION T.D. -> apaga su watchdog
                 LD      A,(IX + 0)               ; A = OPTEUR SEMAPHORE
-                CP      0
+                OR      A
                 JP      Z,APV
                                         ; si el contador ya estaba en 0 antes de sumarle nada, había
                                         ; una tarea esperando: hace falta el V() completo (con colas)
@@ -486,7 +451,6 @@ APV             POP     AF
 ;
 ; PRIMITIVE INIES(#UNITE)                        INITIALISATION SEMAPHORE E/S A 0
                                         ; deja en 0 el semáforo/contador de la unidad de E/S #UNITE
-; [FIX] Se eliminó "LD A,#UNITE / CALL INIES": ejemplo de uso con símbolo indefinido, sin comentar.
 ;
 INIES           DI
 
@@ -527,8 +491,6 @@ INIES           DI
 ; PRIMITIVE ARMERH(COMPTE,#UNITE)                 INITIALISATION OPTEUR T.D.
                                         ; carga la cuenta regresiva del watchdog de una unidad de
                                         ; E/S, SIN activarlo todavía (eso lo hace ACTIVH aparte)
-; [FIX] Se eliminaron "LD C,COMPTE.L / LD B,COMPTE.H / LD A,#UNITE / CALL ARMERH": ejemplo de
-; uso con símbolos indefinidos (COMPTE.L, COMPTE.H, #UNITE) puesto como código real.
 ;
 ARMERH          DI
 
@@ -569,7 +531,6 @@ ARMERH          DI
                                         ; cada interrupción del reloj (RTITCTC) se le va a decrementar
                                         ; la cuenta que le cargó ARMERH
 
-; [FIX] Se eliminó "LD A,#UNITE / CALL ACTIVH": ejemplo de uso con símbolo indefinido, sin comentar.
 ACTIVH          DI
 
                 PUSH    AF
@@ -599,7 +560,6 @@ ACTIVH          DI
                                         ; suspende (desactiva) el watchdog de una unidad de E/S, sin
                                         ; tocar su cuenta (se puede reactivar más tarde con ACTIVH)
 
-; [FIX] Se eliminó "LD A,#UNITE / CALL SUSPH": ejemplo de uso con símbolo indefinido, sin comentar.
 SUSPH           DI
 
                 PUSH    AF
@@ -629,8 +589,6 @@ SUSPH           DI
                                         ; crea una tarea nueva a partir de una dirección de inicio de
                                         ; código (@DEBUT); usa el siguiente bloque libre de INICTX
 
-; [FIX] Se eliminó "LD HL,@DEBUT PGM / CALL CREER": ejemplo de uso con sintaxis inválida
-; (@DEBUT PGM no es un operando válido) puesto como código real.
 CREER           DI
 
                 PUSH    IX
@@ -679,7 +637,7 @@ INIREG          DEC     HL
                 LD      (IX + CHTPMS),NIL        ; CHAINAGE TACHES PRETES
                 LD      (IX + CHTPMS + 1),NIL
                 LD      A,(NBCTX)
-                CP      0                        ; FILE VIDE ?
+                OR      A                        ; FILE VIDE ?
                 JR      NZ,FTPNV
                 LD      (PTRDTP),IX              ; FILE VIDE -> es la primera tarea: ella misma es
                 LD      (PTRFTP),IX              ; cabeza y cola de la cola de listas
@@ -707,8 +665,6 @@ SUITCREAR       POP     HL
 ;***************************************************************************
 ;
 ; PRIMITIVE DETRUIX(#CTX)                          -> destruye una tarea existente
-; [FIX] Se eliminó "LD A,#CTX / CALL DETRUIX": ejemplo de uso con símbolo indefinido (#CTX),
-; sin comentar.
                                                   ; #CTX > 0
 DETRUIX         DI
 
@@ -720,15 +676,13 @@ DETRUIX         DI
                 PUSH    IY
 
                 LD      HL,INICTX                ; RECHERCHE CTX
-                                        ; [FIX] Se cambió LONGCTX por LONGDCTX: el paso entre bloques de
-                                        ; contexto en INICTX debe ser el tamaño TOTAL del bloque.
                 LD      E,LONGDCTX
                 LD      D,0
                 LD      B,A
 BUSCTX          ADD     HL,DE
                 DJNZ    BUSCTX                    ; HL POINTE CTX A DETRUIRE
-                                        ; recorre INICTX en pasos de LONGCTX=6 bytes para llegar al
-                                        ; bloque de la tarea #A.
+                                        ; recorre INICTX en pasos de LONGDCTX (tamaño total del bloque)
+                                        ; para llegar al bloque de la tarea #A.
                 LD      C,L
                 LD      B,H
                 PUSH    BC
@@ -741,10 +695,7 @@ BUSCTX          ADD     HL,DE
 
                 CALL    DECHAIN                   ; TACHE PRETE, DECHAINAGE
                 LD      A,(IX + CHTPMS)           ; DERNIERE ?
-                CP      NIL
-                JR      NZ,FINDET
-                LD      A,(IX + CHTPMS + 1)
-                CP      NIL
+                OR      (IX + CHTPMS + 1)
                 JR      NZ,FINDET                 ; PAS DERNIERE
                 PUSH    IY                        ; DERNIERE
                 POP     DE
@@ -757,11 +708,7 @@ TCHBLQ          LD      A,(IX + SEMAT)            ; TACHE BLOQUEE
                 PUSH    DE
                 POP     IY                        ; DE,IY POINTENT SEMAPHORE
 
-                LD      A,(IY + 0)
-                INC     A
-                LD      (IY + 0),A                ; OPTEUR = OPTEUR + 1
-
-                CP      0
+                INC     (IY + 0)                  ; OPTEUR = OPTEUR + 1
                 JR      NZ,NOVIDBL                ; FILE VIDE ?
 
                 LD      (IY + 1),NIL              ; FILE VIDE
@@ -779,21 +726,15 @@ NOVIDBL         LD      L,(IY + 1)                ; FILE NON VIDE
 
                 LD      A,(IX + CHTPMS)           ; EN TETE
                 LD      (IY + 1),A
-                LD      A,(IX + CHTPMS + 1)
-                                        ; [FIX] Esta línea escribía otra vez en (IY+1) en vez de (IY+2);
-                                        ; (IY+1)/(IY+2) son el puntero de 16 bits a la cabeza de la cola
-                                        ; de espera del semáforo, así que el byte alto debe ir en (IY+2).
-                LD      (IY + 2),A                ; DECHAINAGE
+                LD      A,(IX + CHTPMS + 1)      ; (IY+1)/(IY+2) = puntero de 16 bits a la cabeza de
+                LD      (IY + 2),A                ; la cola de espera: el byte alto va en (IY+2)
                 JR      ULTFIL
 
 STELIM          PUSH    IY                        ; PAS EN TETE, GARDER PTR SEM
                 CALL    DECHAIN                    ; DECHAINAGE
 
 ULTFIL          LD      A,(IX + CHTPMS)            ; DERNIERE ?
-                CP      NIL
-                JR      NZ,FINDET1
-                LD      A,(IX + CHTPMS + 1)
-                CP      NIL
+                OR      (IX + CHTPMS + 1)
                 JR      NZ,FINDET1
 
                 PUSH    IY                          ; DERNIERE
@@ -827,9 +768,7 @@ FINDET          POP     IY
 ;                         AF,HL,DE SONT DETRUITS
 
 DECHAIN         LD      IY,INICTX
-                                        ; [FIX] Se cambió LONGCTX por LONGDCTX (mismo motivo que en
-                                        ; DETRUIX: el paso entre bloques es el tamaño TOTAL del bloque).
-                LD      E,LONGDCTX
+                LD      E,LONGDCTX               ; paso entre bloques = tamaño TOTAL del bloque
                 LD      D,0
 
 BOUX            LD      L,(IY + CHTPMS)             ; RECHERCHE CTX QUI POINTE
@@ -937,7 +876,7 @@ INICTC          LD      HL,TARTIT
                                         ; del CTC) en la tabla de vectores TARTIT
 
                 LD      IX,BSEM
-                LD      E,0
+                LD      E,8                          ; cada entrada de BSEM mide 8 bytes
                 LD      D,0
                 LD      B,SEMPES
 FS              LD      (IX + 5),FALSE              ; T.D. INACTIFS
@@ -1007,10 +946,8 @@ REVISAR         LD      A,(IX + 5)                   ; EN ATTENTE DE REVEIL ?
                 DEC     DE                           ; decrementa su cuenta regresiva de 16 bits
                 LD      (IX + 6),E
                 LD      (IX + 7),D                   ; T.D. ?
-                LD      A,0
-                CP      E
-                JR      NZ,SUSEMES
-                CP      D
+                LD      A,E
+                OR      D
                 JR      NZ,SUSEMES                   ; ¿llegó a 0?
 
                 LD      A,C                          ; OUI
@@ -1035,10 +972,8 @@ SUSEMES         INC     HL                           ; CONTINUER A VERIFIER T.D.
                 DEC     DE                           ; decrementa el contador de la rebanada de tiempo
                 LD      (IY + 6),E
                 LD      (IY + 7),D                   ; FIN TRANCHE ?
-                LD      A,0
-                CP      E
-                JR      NZ,FINITH
-                CP      D
+                LD      A,E
+                OR      D
                 JR      NZ,FINITH                    ; ¿se acabó la rebanada?
 
                 LD      DE,TT                        ; OUI
@@ -1070,9 +1005,6 @@ TIMSLIC         POP     IY                           ; se restauran los registro
                 JP      PASS                         ; ...y se fuerza un PASS: cambio de tarea
                                         ; preventivo (esto es lo que hace real el time-slicing)
 
-
-; [FIX] Se eliminó un "RET" huérfano que estaba aquí, sin etiqueta y sin que nada saltara a él
-; (código muerto que sobraba entre RTITCTC y TACHE 1).
 
 ;***************************************************************************
 ;
