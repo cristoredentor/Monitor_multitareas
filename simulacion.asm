@@ -105,6 +105,13 @@ PPILSYS         .BLOCK  1
 
 TARTIT          .BLOCK  2
 
+CONSOLE_PORT    .EQU    0FFH            ; puerto de E/S por el que también se saca cada carácter;
+                                    
+CONSBUF         .BLOCK  200             ; aquí queda, en orden, cada carácter "impreso" por las
+                                        ; tareas.
+CONSPTR         .BLOCK  2               ; puntero al siguiente hueco libre de CONSBUF
+
+
 ;***************************************************************************
 ;
 ; PRIMITIVES
@@ -801,6 +808,9 @@ DEBMON          DI
                                         ; del sistema (PILSYS), la única que existe antes de crear
                                         ; ninguna tarea
 
+                LD      HL,CONSBUF
+                LD      (CONSPTR),HL              ; INITIALISATION CONSOLA SIMULADA
+
                 LD      A,0
                 LD      (NBCTX),A                 ; INITIALISATION NB CTX -> todavía no hay tareas
 
@@ -1008,22 +1018,43 @@ TIMSLIC         POP     IY                           ; se restauran los registro
 
 ;***************************************************************************
 ;
+; PRINTC                                   RUTINA DE CONSOLA SIMULADA
+;                                           ENTREE  C = caracter a "imprimir"
+;                                           No destruye ningún registro (salvo flags).
+;
+PRINTC          PUSH    AF
+                PUSH    HL
+
+                LD      A,C
+                OUT     (CONSOLE_PORT),A          ; salida por puerto, para emuladores que lo simulen
+
+                LD      HL,(CONSPTR)
+                LD      (HL),A                    ; y además se guarda en CONSBUF, en orden
+                INC     HL
+                LD      (CONSPTR),HL
+
+                POP     HL
+                POP     AF
+                RET
+
+
+;***************************************************************************
+;
 ; TACHE 1
 ;
 ;
 T1              LD      C,41H
-                CALL    014H                       ; llamada a alguna rutina de E/S para imprimir el
-                                        ; carácter en C (dirección 0014H incierta/heredada del
-                                        ; original; no está definida en este archivo)
+                CALL    PRINTC
                 LD      A,1
                 CALL    INIES                      ; inicializa su propio semáforo de E/S (unidad 1)
+
 T12             LD      A,1
                 LD      BC,0014H                   ; arma un temporizador con cuenta 0014H (20)
                 CALL    ARMERH
                 CALL    ACTIVH                     ; lo activa
                 CALL    DEMES                      ; se bloquea esperando a que el reloj la despierte
                 LD      C,41H                      ; al despertar, vuelve a imprimir 'A'
-                CALL    014H
+                CALL    PRINTC
                 JR      T12                        ; y repite para siempre
 
 
@@ -1031,7 +1062,7 @@ T12             LD      A,1
 ;                                                     con un período más corto (~7 ticks) que T1/T3
 ;
 T2              LD      C,42H
-                CALL    014H
+                CALL    PRINTC
                 LD      A,2
                 CALL    INIES                      ; semáforo de E/S de la unidad 2
 T21             LD      A,2
@@ -1040,7 +1071,7 @@ T21             LD      A,2
                 CALL    ACTIVH
                 CALL    DEMES
                 LD      C,42H
-                CALL    014H
+                CALL    PRINTC
                 JR      T21
 
 
@@ -1049,7 +1080,7 @@ T21             LD      A,2
 ;
 T3              LD      L,43H
                 LD      C,L
-                CALL    014H
+                CALL    PRINTC
                 LD      A,3
                 CALL    INIES                      ; semáforo de E/S de la unidad 3
 T31             LD      A,3
@@ -1058,7 +1089,7 @@ T31             LD      A,3
                 CALL    ACTIVH
                 CALL    DEMES
                 LD      C,43H
-                CALL    014H
+                CALL    PRINTC
                 JR      T31
 
 
