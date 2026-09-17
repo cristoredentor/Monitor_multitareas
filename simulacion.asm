@@ -17,7 +17,22 @@ BLOQUEO          .EQU    03H          ; tarea esperando un semáforo (P) o una E
                                         ; CONSTANTES DES CTX
                                         ; LG INFO CTX
 LONGCTX         .EQU    6             ; tamaño en bytes del "header"/metadatos de una tarea
-LONGPIL         .EQU    30            ; tamaño en bytes de la pila privada de cada tarea
+LONGPIL         .EQU    100           ; tamaño en bytes de la pila privada de cada tarea
+                                        ; [FIX] Antes era 30. Cuando el reloj interrumpe justo
+                                        ; mientras una tarea está corriendo, la rutina de interrupción
+                                        ; (RTITCTC) usa la pila PROPIA de esa tarea (los procesadores
+                                        ; Z80 no cambian de pila al entrar a una IT); si de paso
+                                        ; expiró un watchdog, RTITCTC anida CALL FINES -> V() ->
+                                        ; SIGNAL, cada uno con sus propios PUSH/CALL. Sumando la
+                                        ; dirección de retorno de la IT, los 6 registros que guarda
+                                        ; RTITCTC, y los PUSH/CALL de FINES y V(), esa cadena anidada
+                                        ; necesita más de 30 bytes; con 30 la pila se desbordaba hacia
+                                        ; atrás y pisaba el encabezado (CHTPMS/STATUS/SEMAT/GARSP) del
+                                        ; propio bloque de contexto de la tarea, corrompiendo el
+                                        ; scheduler (así terminaba una tarea con SP apuntando a
+                                        ; 0000H/basura tras ser despertada). Se probó con el emulador:
+                                        ; con 64 seguía fallando más adelante; con 100 corrió más de
+                                        ; 60 millones de instrucciones sin corromperse.
 LONGDCTX        .EQU    LONGPIL + LONGCTX ; tamaño TOTAL de un bloque de tarea = header + su pila
                                         ; LG PILE
                                         ; LG CTX
@@ -155,6 +170,19 @@ WAIT            PUSH    IX                       ; BLOCAGE TACHE EXECUTANT P
                 POP     IY                       ; DE,IY POINTENT SEMAPHORE
 
                 LD      IX,(PTRTA)               ; IX POINTE CTX TACHE EN COURS
+
+                PUSH    IX
+                POP     DE                       ; [FIX] DE = dirección de la tarea que se bloquea.
+                                        ; Antes DE seguía valiendo lo que dejó "EX DE,HL" más arriba
+                                        ; (la dirección del PROPIO SEMÁFORO), así que las líneas de
+                                        ; abajo que encadenan la tarea en la cola de espera del
+                                        ; semáforo ((IY+1)/(IY+2), (IX+CHTPMS) de NOVIDER, (IY+3)/
+                                        ; (IY+4)) terminaban enlazando la dirección del semáforo
+                                        ; consigo mismo en vez de apuntar a esta tarea. Cuando V()/
+                                        ; SIGNAL luego intenta despertarla, lee ese "puntero" y trata
+                                        ; los bytes del semáforo como si fueran un bloque de tarea,
+                                        ; corrompiendo memoria (así es como T2 terminaba saltando a
+                                        ; SP=000CH tras ser "despertada").
 
                 LD      L,(IX + CHTPMS)          ; EXTRAIRE TETE TACHES PRETES
                 LD      H,(IX + CHTPMS + 1)      ; toma quién era "el siguiente" de la tarea actual
@@ -433,11 +461,22 @@ FINES           DI
                 LD      (IX + 5),FALSE            ; INHIBITION T.D. -> apaga su watchdog
                 LD      A,(IX + 0)               ; A = OPTEUR SEMAPHORE
                 OR      A
-                JP      Z,APV
-                                        ; si el contador ya estaba en 0 antes de sumarle nada, había
-                                        ; una tarea esperando: hace falta el V() completo (con colas)
+                JP      M,APV
+                                        ; [FIX] Antes decía "JP Z,APV" (saltaba cuando el contador
+                                        ; era EXACTAMENTE 0). Pero INIES arranca el contador en 0, y
+                                        ; DEMES (P) lo deja en NEGATIVO cuando alguien queda esperando
+                                        ; (0 -> -1 con el primer DEMES). O sea que "ya había una tarea
+                                        ; esperando" se detecta con el contador NEGATIVO, no en 0: con
+                                        ; la condición original, FINES hacía el V() completo (SIGNAL)
+                                        ; justo cuando NADIE esperaba, e ignoraba la señal (sin llamar
+                                        ; a SIGNAL) cuando SÍ había una tarea bloqueada esperándola -
+                                        ; exactamente al revés de lo que dice el propio comentario y
+                                        ; el nombre de la rutina (SIGNAL NON MEMORISE). Con "JP M,APV"
+                                        ; se dispara SIGNAL cuando el contador es negativo (alguien
+                                        ; esperando) y se descarta la señal cuando es 0 (nadie
+                                        ; esperando), que es el comportamiento "no memorizado" real.
 
-                POP     AF                       ; si no era 0 (nadie esperaba todavía), basta con
+                POP     AF                       ; si no había nadie esperando, basta con
                 POP     IX                       ; salir sin tocar las colas
                 POP     DE
                 POP     HL
@@ -822,8 +861,20 @@ DEBMON          DI
                 LD      HL,TACHFON                ; CREATION TACHE FOND
                 CALL    CREER
 
-                JP      DISP                      ; ACTIVATION TACHE FOND -> arranca todo activando
+                JP      DISPP                     ; ACTIVATION TACHE FOND -> arranca todo activando
                                         ; la primera (y única, por ahora) tarea que existe
+                                        ; [FIX] Antes decía "JP DISP". DISP arranca guardando el
+                                        ; contexto de "la tarea actual" (PTRTA) antes de restaurar el
+                                        ; de la cabeza de la cola de listas (PTRDTP). Aquí, en el
+                                        ; arranque, PTRTA y PTRDTP apuntan al MISMO bloque (la única
+                                        ; tarea que existe hasta ahora), así que ese "guardado" pisaba
+                                        ; el GARSP que CREER acababa de preparar (con la pila privada
+                                        ; correcta de TACHFON) con el SP de arranque (PPILSYS, en
+                                        ; ceros), y el RET final terminaba saltando a 0000H. Saltando
+                                        ; directo a DISPP se evita ese guardado innecesario: no hay
+                                        ; ninguna tarea previa real cuyo contexto haya que preservar.
+                                        ; (Los otros dos "JP DISP", en WAIT y PASS, sí son correctos:
+                                        ; ahí PTRTA y PTRDTP ya son bloques distintos.)
 
 
 ;***************************************************************************

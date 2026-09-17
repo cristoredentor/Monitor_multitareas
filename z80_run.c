@@ -26,10 +26,10 @@
 #define MEMSIZE       0x10000
 #define ORG_START     0x0FFD   /* .ORG 1000H - 3 */
 #define ENTRY_POINT   0x1001   /* NBIOIO: "JP DEBMON", ver simulacion.sym */
-#define TARTIT_LOW    0xE5     /* byte bajo de TARTIT, ver simulacion.sym  */
+#define TARTIT_LOW    0x5D     /* byte bajo de TARTIT, ver simulacion.sym  */
 #define CONSOLE_PORT  0xFF
-#define CONSBUF_ADDR  0x13E7   /* ver simulacion.sym */
-#define CONSPTR_ADDR  0x14AF   /* ver simulacion.sym */
+#define CONSBUF_ADDR  0x195F   /* ver simulacion.sym */
+#define CONSPTR_ADDR  0x1A27   /* ver simulacion.sym */
 #define TICK_EVERY    200
 #define MAX_INSTR     5000000L
 
